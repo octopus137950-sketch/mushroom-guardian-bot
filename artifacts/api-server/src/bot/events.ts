@@ -8,6 +8,7 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 import { commands } from "./commands";
+import { handleReactionAdd, handleReactionRemove } from "./reaction-roles";
 import { logger } from "../lib/logger";
 
 const MUSHROOM_WELCOME = [
@@ -91,4 +92,7 @@ export function registerEvents(client: Client): void {
       }
     }
   });
+
+  client.on(Events.MessageReactionAdd, handleReactionAdd);
+  client.on(Events.MessageReactionRemove, handleReactionRemove);
 }

@@ -7,6 +7,7 @@ import {
   Colors,
 } from "discord.js";
 import { logger } from "../lib/logger";
+import { executeReactionRole } from "./reaction-roles";
 
 export interface Command {
   data: SlashCommandBuilder;
@@ -365,6 +366,67 @@ async function executeHelp(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ embeds: [embed] });
 }
 
+const reactionRoleCommand = new SlashCommandBuilder()
+  .setName("reactionrole")
+  .setDescription("🎭 ระบบรับยศผ่านการกดอิโมจิ")
+  .addSubcommand((sub) =>
+    sub
+      .setName("create")
+      .setDescription("สร้างแผงรับยศใหม่ในห้องปัจจุบัน")
+      .addStringOption((opt) =>
+        opt.setName("title").setDescription("หัวข้อของแผง").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("description").setDescription("คำอธิบายใต้รายการยศ").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("image").setDescription("URL ของรูปภาพ (ถ้ามี)").setRequired(false)
+      )
+      .addBooleanOption((opt) =>
+        opt
+          .setName("exclusive")
+          .setDescription("ล็อคให้รับได้แค่ยศเดียว — กดยศใหม่จะยึดยศเดิม (default: false)")
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("add")
+      .setDescription("เพิ่มอิโมจิ-ยศในแผง")
+      .addStringOption((opt) =>
+        opt.setName("message_id").setDescription("ID ของข้อความแผง").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("emoji").setDescription("อิโมจิที่ใช้กด").setRequired(true)
+      )
+      .addRoleOption((opt) =>
+        opt.setName("role").setDescription("ยศที่จะได้รับ").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("remove")
+      .setDescription("ลบอิโมจิ-ยศออกจากแผง")
+      .addStringOption((opt) =>
+        opt.setName("message_id").setDescription("ID ของข้อความแผง").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("emoji").setDescription("อิโมจิที่ต้องการลบ").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("delete")
+      .setDescription("ลบแผงรับยศทั้งหมด")
+      .addStringOption((opt) =>
+        opt.setName("message_id").setDescription("ID ของข้อความแผง").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub.setName("list").setDescription("ดูรายการแผงรับยศทั้งหมดในเซิร์ฟเวอร์")
+  )
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles) as SlashCommandBuilder;
+
 export const commands: Command[] = [
   { data: mushroomCommand, execute: executeMushroom },
   { data: warnCommand, execute: executeWarn },
@@ -375,4 +437,5 @@ export const commands: Command[] = [
   { data: clearCommand, execute: executeClear },
   { data: serverinfoCommand, execute: executeServerinfo },
   { data: helpCommand, execute: executeHelp },
+  { data: reactionRoleCommand, execute: executeReactionRole },
 ];

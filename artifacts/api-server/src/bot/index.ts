@@ -16,8 +16,14 @@ export function startBot(): void {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildModeration,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMessageReactions,
     ],
-    partials: [Partials.GuildMember],
+    partials: [
+      Partials.GuildMember,
+      Partials.Message,
+      Partials.Channel,
+      Partials.Reaction,
+    ],
   });
 
   registerEvents(client);
