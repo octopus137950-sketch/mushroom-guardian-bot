@@ -136,7 +136,7 @@ async function getOrCreatePlayer(userId: string): Promise<MushroomPlayer> {
   return created!;
 }
 
-async function getShopItems(guildId: string): Promise<MushroomShopItem[]> {
+export async function getShopItems(guildId: string): Promise<MushroomShopItem[]> {
   return db
     .select()
     .from(mushroomShopItemsTable)

@@ -3,11 +3,44 @@ import {
   Events,
   GuildMember,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
 } from "discord.js";
 import { commands } from "./commands";
 import { handleReactionAdd, handleReactionRemove } from "./reaction-roles";
 import { handleMemberWelcome, handleMemberGoodbye } from "./welcome-goodbye";
+import { getShopItems } from "./minigame";
 import { logger } from "../lib/logger";
+
+async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const { commandName } = interaction;
+  const focused = interaction.options.getFocused(true);
+
+  if (focused.name !== "item_id") return;
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.respond([]);
+    return;
+  }
+
+  try {
+    const items = await getShopItems(guildId);
+    const query = focused.value.toLowerCase();
+
+    const matches = items
+      .filter((item) => item.name.toLowerCase().includes(query) || item.id.includes(query))
+      .slice(0, 25)
+      .map((item) => ({
+        name: `${item.emoji} ${item.name} — ${item.price.toLocaleString()} สปอร์`,
+        value: item.id,
+      }));
+
+    await interaction.respond(matches);
+  } catch (err) {
+    logger.error({ err, commandName }, "Autocomplete error");
+    await interaction.respond([]);
+  }
+}
 
 export function registerEvents(client: Client): void {
   client.once(Events.ClientReady, async (readyClient) => {
@@ -48,6 +81,13 @@ export function registerEvents(client: Client): void {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(interaction).catch((err) => {
+        logger.error({ err }, "Unhandled autocomplete error");
+      });
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const cmd = commands.find((c) => c.data.name === interaction.commandName);

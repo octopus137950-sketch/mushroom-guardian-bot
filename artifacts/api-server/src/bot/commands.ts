@@ -505,8 +505,9 @@ const buyCommand = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("item_id")
-      .setDescription("ID สินค้าที่ต้องการซื้อ (ดูได้จาก /shop)")
+      .setDescription("พิมชื่อสินค้าเพื่อค้นหา แล้วเลือกจากรายการ")
       .setRequired(true)
+      .setAutocomplete(true)
   ) as SlashCommandBuilder;
 
 const giveSporeCommand = new SlashCommandBuilder()
@@ -580,7 +581,7 @@ const shopItemCommand = new SlashCommandBuilder()
       .setName("edit")
       .setDescription("แก้ไขข้อมูลสินค้าที่มีอยู่")
       .addStringOption((opt) =>
-        opt.setName("item_id").setDescription("ID สินค้าที่ต้องการแก้ไข (ดูได้จาก /shop-item list)").setRequired(true)
+        opt.setName("item_id").setDescription("พิมชื่อสินค้าเพื่อค้นหา แล้วเลือกจากรายการ").setRequired(true).setAutocomplete(true)
       )
       .addStringOption((opt) =>
         opt.setName("name").setDescription("ชื่อสินค้าใหม่").setRequired(false)
@@ -603,7 +604,7 @@ const shopItemCommand = new SlashCommandBuilder()
       .setName("delete")
       .setDescription("ลบสินค้าออกจากร้านค้า")
       .addStringOption((opt) =>
-        opt.setName("item_id").setDescription("ID สินค้าที่ต้องการลบ").setRequired(true)
+        opt.setName("item_id").setDescription("พิมชื่อสินค้าเพื่อค้นหา แล้วเลือกจากรายการ").setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((sub) =>
