@@ -14,10 +14,10 @@ import {
   executeWallet,
   executeShop,
   executeBuy,
+  executeShopItem,
   executeGiveSpore,
   executeSetSpore,
   executeFarmConfig,
-  SHOP_ITEMS,
 } from "./minigame";
 
 export interface Command {
@@ -507,9 +507,6 @@ const buyCommand = new SlashCommandBuilder()
       .setName("item_id")
       .setDescription("ID สินค้าที่ต้องการซื้อ (ดูได้จาก /shop)")
       .setRequired(true)
-      .addChoices(
-        ...SHOP_ITEMS.map((i) => ({ name: i.name, value: i.id }))
-      )
   ) as SlashCommandBuilder;
 
 const giveSporeCommand = new SlashCommandBuilder()
@@ -541,24 +538,76 @@ const farmConfigCommand = new SlashCommandBuilder()
     sub.setName("log-channel").setDescription("ตั้งห้องนี้เป็นห้อง Log ธุรกรรม")
   )
   .addSubcommand((sub) =>
+    sub.setName("info").setDescription("ดูการตั้งค่าระบบมินิเกมปัจจุบัน")
+  )
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const shopItemCommand = new SlashCommandBuilder()
+  .setName("shop-item")
+  .setDescription("🏪 [แอดมิน] จัดการสินค้าในร้านค้า")
+  .addSubcommand((sub) =>
     sub
-      .setName("set-role")
-      .setDescription("ตั้งค่ายศที่จะมอบให้เมื่อซื้อสินค้า")
+      .setName("add")
+      .setDescription("เพิ่มสินค้าใหม่เข้าร้านค้า")
+      .addStringOption((opt) =>
+        opt.setName("name").setDescription("ชื่อสินค้า").setRequired(true)
+      )
+      .addIntegerOption((opt) =>
+        opt.setName("price").setDescription("ราคา (สปอร์)").setRequired(true).setMinValue(1)
+      )
+      .addStringOption((opt) =>
+        opt.setName("description").setDescription("คำอธิบายสินค้า").setRequired(false)
+      )
+      .addStringOption((opt) =>
+        opt.setName("emoji").setDescription("อีโมจิประจำสินค้า (เช่น 🍄)").setRequired(false)
+      )
       .addStringOption((opt) =>
         opt
-          .setName("item_id")
-          .setDescription("ID สินค้าประเภทยศ")
-          .setRequired(true)
+          .setName("type")
+          .setDescription("ประเภทสินค้า")
+          .setRequired(false)
           .addChoices(
-            ...SHOP_ITEMS.filter((i) => i.type === "role").map((i) => ({ name: i.name, value: i.id }))
+            { name: "🎭 มอบยศอัตโนมัติ", value: "role" },
+            { name: "📩 แมนนวล (แอดมินดำเนินการ)", value: "manual" }
           )
       )
       .addRoleOption((opt) =>
-        opt.setName("role").setDescription("ยศที่ต้องการมอบ").setRequired(true)
+        opt.setName("role").setDescription("ยศที่จะมอบ (เฉพาะประเภท role)").setRequired(false)
       )
   )
   .addSubcommand((sub) =>
-    sub.setName("info").setDescription("ดูการตั้งค่าระบบมินิเกมปัจจุบัน")
+    sub
+      .setName("edit")
+      .setDescription("แก้ไขข้อมูลสินค้าที่มีอยู่")
+      .addStringOption((opt) =>
+        opt.setName("item_id").setDescription("ID สินค้าที่ต้องการแก้ไข (ดูได้จาก /shop-item list)").setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("name").setDescription("ชื่อสินค้าใหม่").setRequired(false)
+      )
+      .addIntegerOption((opt) =>
+        opt.setName("price").setDescription("ราคาใหม่ (สปอร์)").setRequired(false).setMinValue(1)
+      )
+      .addStringOption((opt) =>
+        opt.setName("description").setDescription("คำอธิบายใหม่").setRequired(false)
+      )
+      .addStringOption((opt) =>
+        opt.setName("emoji").setDescription("อีโมจิใหม่").setRequired(false)
+      )
+      .addRoleOption((opt) =>
+        opt.setName("role").setDescription("ยศใหม่ที่จะมอบ").setRequired(false)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("delete")
+      .setDescription("ลบสินค้าออกจากร้านค้า")
+      .addStringOption((opt) =>
+        opt.setName("item_id").setDescription("ID สินค้าที่ต้องการลบ").setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub.setName("list").setDescription("ดูรายการสินค้าทั้งหมดพร้อม ID")
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
@@ -583,4 +632,5 @@ export const commands: Command[] = [
   { data: giveSporeCommand, execute: executeGiveSpore },
   { data: setSporeCommand, execute: executeSetSpore },
   { data: farmConfigCommand, execute: executeFarmConfig },
+  { data: shopItemCommand, execute: executeShopItem },
 ];

@@ -7,8 +7,13 @@ import {
   TextChannel,
 } from "discord.js";
 import { db } from "@workspace/db";
-import { mushroomPlayersTable, type MushroomPlayer } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  mushroomPlayersTable,
+  mushroomShopItemsTable,
+  type MushroomPlayer,
+  type MushroomShopItem,
+} from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -26,17 +31,8 @@ interface FarmEvent {
   color: number;
 }
 
-interface ShopItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  type: "role" | "manual";
-}
-
 interface GuildGameConfig {
   logChannelId?: string;
-  roleItems: Map<string, string>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -71,30 +67,13 @@ const FARM_EVENTS: FarmEvent[] = [
   },
 ];
 
-export const SHOP_ITEMS: ShopItem[] = [
-  {
-    id: "hunter_role",
-    name: "🍄 ยศนักล่าเห็ดเวทมนตร์",
-    description: "ยศพิเศษสำหรับนักล่าเห็ดผู้กล้าหาญแห่ง Mycelium Network",
-    price: 500,
-    type: "role",
-  },
-  {
-    id: "name_color",
-    name: "🎨 น้ำยาเสกสีชื่อ",
-    description: "เสกสีชื่อตามที่ต้องการ (แอดมินจะดำเนินการให้หลังซื้อ)",
-    price: 1000,
-    type: "manual",
-  },
-];
-
 // ─── Guild config store (in-memory) ──────────────────────────────────────────
 
 const guildConfigs = new Map<string, GuildGameConfig>();
 
 export function getGuildConfig(guildId: string): GuildGameConfig {
   if (!guildConfigs.has(guildId)) {
-    guildConfigs.set(guildId, { roleItems: new Map() });
+    guildConfigs.set(guildId, {});
   }
   return guildConfigs.get(guildId)!;
 }
@@ -131,6 +110,16 @@ function rarityLabel(event: FarmEvent): string {
   return "◻️ ทั่วไป";
 }
 
+function generateItemId(guildId: string, name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9ก-ฮ]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 20);
+  const suffix = Date.now().toString(36).slice(-4);
+  return `${base}_${suffix}`;
+}
+
 async function getOrCreatePlayer(userId: string): Promise<MushroomPlayer> {
   const existing = await db
     .select()
@@ -145,6 +134,27 @@ async function getOrCreatePlayer(userId: string): Promise<MushroomPlayer> {
     .values({ userId })
     .returning();
   return created!;
+}
+
+async function getShopItems(guildId: string): Promise<MushroomShopItem[]> {
+  return db
+    .select()
+    .from(mushroomShopItemsTable)
+    .where(eq(mushroomShopItemsTable.guildId, guildId));
+}
+
+async function getShopItem(guildId: string, itemId: string): Promise<MushroomShopItem | null> {
+  const rows = await db
+    .select()
+    .from(mushroomShopItemsTable)
+    .where(
+      and(
+        eq(mushroomShopItemsTable.id, itemId),
+        eq(mushroomShopItemsTable.guildId, guildId)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function sendLog(
@@ -194,7 +204,7 @@ export async function executeFarm(interaction: ChatInputCommandInteraction): Pro
 
   if (event.type === "add") {
     const base = randInt(event.min!, event.max!);
-    pointChange = base + (event.name !== "แมงมุมซุ่มโจมตี" ? levelBonus : 0);
+    pointChange = base + levelBonus;
     pointDesc = `+${pointChange} สปอร์ (โบนัสเลเวล: +${levelBonus})`;
   } else if (event.type === "subtract") {
     const base = randInt(event.min!, event.max!);
@@ -294,26 +304,32 @@ export async function executeWallet(interaction: ChatInputCommandInteraction): P
 }
 
 export async function executeShop(interaction: ChatInputCommandInteraction): Promise<void> {
-  const cfg = getGuildConfig(interaction.guildId!);
+  const guildId = interaction.guildId!;
+  const items = await getShopItems(guildId);
 
   const embed = new EmbedBuilder()
     .setColor(0x8b5e3c)
     .setTitle("🏪 ร้านค้าอาณาจักรเห็ด")
-    .setDescription("แลกสปอร์ที่สะสมไว้เป็นรางวัลพิเศษ! ใช้ `/buy <item_id>` เพื่อซื้อ")
+    .setDescription(
+      items.length === 0
+        ? "🚫 ร้านค้ายังไม่มีสินค้า\nแอดมินสามารถเพิ่มสินค้าด้วย `/shop-item add` ได้เลยครับ!"
+        : "แลกสปอร์ที่สะสมไว้เป็นรางวัลพิเศษ! ใช้ `/buy <item_id>` เพื่อซื้อ"
+    )
     .setFooter({ text: "Mushroom Kingdom 🍄 | สปอร์ดูได้ที่ /wallet" })
     .setTimestamp();
 
-  for (const item of SHOP_ITEMS) {
-    const roleConfigured =
-      item.type === "role" ? (cfg.roleItems.get(item.id) ? "✅ พร้อมแจก" : "⚙️ รอแอดมินตั้งค่า") : "—";
+  for (const item of items) {
+    const roleStatus = item.type === "role"
+      ? (item.roleId ? "🎭 มอบยศอัตโนมัติ" : "⚙️ รอแอดมินตั้งค่า")
+      : "📩 แอดมินดำเนินการให้หลังซื้อ";
 
     embed.addFields({
-      name: `${item.name}`,
+      name: `${item.emoji} ${item.name}`,
       value:
         `📋 **ID:** \`${item.id}\`\n` +
-        `💬 ${item.description}\n` +
+        `💬 ${item.description || "—"}\n` +
         `💰 **ราคา:** ${item.price.toLocaleString()} สปอร์\n` +
-        `${item.type === "role" ? `🎭 สถานะ: ${roleConfigured}` : "📩 แอดมินจะดำเนินการให้หลังซื้อ"}`,
+        `📦 ${roleStatus}`,
     });
   }
 
@@ -322,7 +338,8 @@ export async function executeShop(interaction: ChatInputCommandInteraction): Pro
 
 export async function executeBuy(interaction: ChatInputCommandInteraction): Promise<void> {
   const itemId = interaction.options.getString("item_id", true).trim();
-  const item = SHOP_ITEMS.find((i) => i.id === itemId);
+  const guildId = interaction.guildId!;
+  const item = await getShopItem(guildId, itemId);
 
   if (!item) {
     await interaction.reply({
@@ -352,7 +369,6 @@ export async function executeBuy(interaction: ChatInputCommandInteraction): Prom
     return;
   }
 
-  const cfg = getGuildConfig(interaction.guildId!);
   const newPoints = player.sporePoints - item.price;
 
   await db
@@ -363,26 +379,23 @@ export async function executeBuy(interaction: ChatInputCommandInteraction): Prom
   const member = interaction.member as GuildMember;
   let resultNote = "";
 
-  if (item.type === "role") {
-    const roleId = cfg.roleItems.get(item.id);
-    if (roleId) {
-      try {
-        await member.roles.add(roleId);
-        resultNote = `🎭 มอบยศ <@&${roleId}> ให้แล้ว!`;
-      } catch {
-        resultNote = "⚠️ ไม่สามารถมอบยศได้อัตโนมัติ กรุณาติดต่อแอดมิน";
-      }
-    } else {
-      resultNote = "⚙️ แอดมินยังไม่ได้ตั้งค่ายศ กรุณาติดต่อแอดมิน";
+  if (item.type === "role" && item.roleId) {
+    try {
+      await member.roles.add(item.roleId);
+      resultNote = `🎭 มอบยศ <@&${item.roleId}> ให้แล้ว!`;
+    } catch {
+      resultNote = "⚠️ ไม่สามารถมอบยศได้อัตโนมัติ กรุณาติดต่อแอดมิน";
     }
+  } else if (item.type === "role") {
+    resultNote = "⚙️ แอดมินยังไม่ได้ตั้งค่ายศ กรุณาติดต่อแอดมิน";
   } else {
-    resultNote = "📩 แอดมินจะดำเนินการเปลี่ยนสีชื่อให้คุณเร็วๆ นี้!";
+    resultNote = "📩 แอดมินจะดำเนินการให้คุณเร็วๆ นี้!";
   }
 
   const successEmbed = new EmbedBuilder()
     .setColor(Colors.Green)
     .setTitle("✅ ซื้อสำเร็จ!")
-    .setDescription(`ท่านซื้อ **${item.name}** สำเร็จแล้วครับ!`)
+    .setDescription(`ท่านซื้อ **${item.emoji} ${item.name}** สำเร็จแล้วครับ!`)
     .addFields(
       { name: "💰 สปอร์ที่ใช้", value: `-${item.price.toLocaleString()}`, inline: true },
       { name: "💼 สปอร์คงเหลือ", value: `${newPoints.toLocaleString()}`, inline: true },
@@ -399,15 +412,142 @@ export async function executeBuy(interaction: ChatInputCommandInteraction): Prom
     .setTitle("🛒 บันทึกการซื้อสินค้า")
     .addFields(
       { name: "👤 ผู้ซื้อ", value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
-      { name: "📦 สินค้า", value: item.name, inline: true },
+      { name: "📦 สินค้า", value: `${item.emoji} ${item.name}`, inline: true },
       { name: "💰 ราคา", value: `${item.price.toLocaleString()} สปอร์`, inline: true },
       { name: "💼 สปอร์หลังซื้อ", value: `${newPoints.toLocaleString()}`, inline: true },
       { name: "📋 หมายเหตุ", value: resultNote }
     )
     .setTimestamp();
 
-  await sendLog(interaction.guildId!, interaction.client as never, logEmbed);
+  await sendLog(guildId, interaction.client as never, logEmbed);
   logger.info({ userId: interaction.user.id, itemId, newPoints }, "Item purchased");
+}
+
+export async function executeShopItem(interaction: ChatInputCommandInteraction): Promise<void> {
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId!;
+
+  if (sub === "add") {
+    const name = interaction.options.getString("name", true).trim();
+    const price = interaction.options.getInteger("price", true);
+    const description = interaction.options.getString("description") ?? "";
+    const emoji = interaction.options.getString("emoji") ?? "📦";
+    const type = (interaction.options.getString("type") ?? "manual") as "role" | "manual";
+    const role = interaction.options.getRole("role");
+
+    const id = generateItemId(guildId, name);
+
+    await db.insert(mushroomShopItemsTable).values({
+      id,
+      guildId,
+      name,
+      description,
+      price,
+      emoji,
+      type,
+      roleId: role?.id ?? null,
+    });
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(Colors.Green)
+          .setTitle("✅ เพิ่มสินค้าแล้ว!")
+          .addFields(
+            { name: "📛 ชื่อ", value: `${emoji} ${name}`, inline: true },
+            { name: "💰 ราคา", value: `${price.toLocaleString()} สปอร์`, inline: true },
+            { name: "🔑 ID", value: `\`${id}\``, inline: true },
+            { name: "💬 คำอธิบาย", value: description || "—" },
+            { name: "📦 ประเภท", value: type === "role" ? `🎭 มอบยศ ${role ? `<@&${role.id}>` : "(ยังไม่ตั้งค่า)"}` : "📩 แมนนวล" }
+          )
+          .setFooter({ text: "Mushroom Kingdom 🍄 | ดูสินค้าทั้งหมดด้วย /shop" }),
+      ],
+      ephemeral: true,
+    });
+
+  } else if (sub === "edit") {
+    const itemId = interaction.options.getString("item_id", true).trim();
+    const item = await getShopItem(guildId, itemId);
+
+    if (!item) {
+      await interaction.reply({ content: `❌ ไม่พบสินค้า ID \`${itemId}\``, ephemeral: true });
+      return;
+    }
+
+    const name = interaction.options.getString("name") ?? item.name;
+    const price = interaction.options.getInteger("price") ?? item.price;
+    const description = interaction.options.getString("description") ?? item.description;
+    const emoji = interaction.options.getString("emoji") ?? item.emoji;
+    const role = interaction.options.getRole("role");
+    const roleId = role ? role.id : item.roleId;
+
+    await db
+      .update(mushroomShopItemsTable)
+      .set({ name, price, description, emoji, roleId })
+      .where(and(eq(mushroomShopItemsTable.id, itemId), eq(mushroomShopItemsTable.guildId, guildId)));
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(Colors.Blue)
+          .setTitle("✏️ แก้ไขสินค้าแล้ว!")
+          .addFields(
+            { name: "📛 ชื่อ", value: `${emoji} ${name}`, inline: true },
+            { name: "💰 ราคา", value: `${price.toLocaleString()} สปอร์`, inline: true },
+            { name: "🔑 ID", value: `\`${itemId}\``, inline: true },
+            { name: "💬 คำอธิบาย", value: description || "—" },
+            { name: "🎭 ยศ", value: roleId ? `<@&${roleId}>` : "—" }
+          )
+          .setFooter({ text: "Mushroom Kingdom 🍄" }),
+      ],
+      ephemeral: true,
+    });
+
+  } else if (sub === "delete") {
+    const itemId = interaction.options.getString("item_id", true).trim();
+    const item = await getShopItem(guildId, itemId);
+
+    if (!item) {
+      await interaction.reply({ content: `❌ ไม่พบสินค้า ID \`${itemId}\``, ephemeral: true });
+      return;
+    }
+
+    await db
+      .delete(mushroomShopItemsTable)
+      .where(and(eq(mushroomShopItemsTable.id, itemId), eq(mushroomShopItemsTable.guildId, guildId)));
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(Colors.Red)
+          .setTitle("🗑️ ลบสินค้าแล้ว!")
+          .setDescription(`ลบ **${item.emoji} ${item.name}** ออกจากร้านค้าแล้วครับ`)
+          .setFooter({ text: "Mushroom Kingdom 🍄" }),
+      ],
+      ephemeral: true,
+    });
+
+  } else if (sub === "list") {
+    const items = await getShopItems(guildId);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x8b5e3c)
+      .setTitle("📋 รายการสินค้าทั้งหมด")
+      .setDescription(items.length === 0 ? "ยังไม่มีสินค้า — ใช้ `/shop-item add` เพิ่มได้เลย!" : `มีสินค้าทั้งหมด **${items.length}** รายการ`)
+      .setFooter({ text: "Mushroom Kingdom 🍄" });
+
+    for (const item of items) {
+      embed.addFields({
+        name: `${item.emoji} ${item.name}`,
+        value:
+          `🔑 ID: \`${item.id}\`  💰 ${item.price.toLocaleString()} สปอร์  📦 ${item.type}\n` +
+          (item.description ? `💬 ${item.description}\n` : "") +
+          (item.roleId ? `🎭 ยศ: <@&${item.roleId}>` : ""),
+      });
+    }
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
 }
 
 export async function executeGiveSpore(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -514,38 +654,14 @@ export async function executeFarmConfig(interaction: ChatInputCommandInteraction
       ],
       ephemeral: true,
     });
-  } else if (sub === "set-role") {
-    const itemId = interaction.options.getString("item_id", true).trim();
-    const role = interaction.options.getRole("role", true);
-
-    const item = SHOP_ITEMS.find((i) => i.id === itemId && i.type === "role");
-    if (!item) {
-      await interaction.reply({ content: `❌ ไม่พบสินค้าประเภท role ID \`${itemId}\``, ephemeral: true });
-      return;
-    }
-
-    cfg.roleItems.set(itemId, role.id);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(Colors.Green)
-          .setTitle("✅ ตั้งค่ายศแล้ว!")
-          .setDescription(`สินค้า **${item.name}** จะมอบยศ <@&${role.id}> ให้ผู้ซื้ออัตโนมัติแล้วครับ`)
-          .setFooter({ text: "Mushroom Kingdom 🍄" }),
-      ],
-      ephemeral: true,
-    });
   } else if (sub === "info") {
+    const items = await getShopItems(interaction.guildId!);
     const embed = new EmbedBuilder()
       .setColor(0x8b5e3c)
       .setTitle("⚙️ การตั้งค่ามินิเกม")
       .addFields(
         { name: "📋 ห้อง Log", value: cfg.logChannelId ? `<#${cfg.logChannelId}>` : "❌ ยังไม่ตั้งค่า", inline: true },
-        ...SHOP_ITEMS.filter((i) => i.type === "role").map((i) => ({
-          name: `🎭 ${i.name}`,
-          value: cfg.roleItems.get(i.id) ? `<@&${cfg.roleItems.get(i.id)}>` : "❌ ยังไม่ตั้งค่า",
-          inline: true,
-        }))
+        { name: "🏪 สินค้าในร้าน", value: `${items.length} รายการ`, inline: true }
       )
       .setFooter({ text: "Mushroom Kingdom 🍄" });
     await interaction.reply({ embeds: [embed], ephemeral: true });
