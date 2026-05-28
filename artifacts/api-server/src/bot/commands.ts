@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { executeReactionRole } from "./reaction-roles";
+import { executeWelcome, executeGoodbye } from "./welcome-goodbye";
 
 export interface Command {
   data: SlashCommandBuilder;
@@ -427,6 +428,50 @@ const reactionRoleCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles) as SlashCommandBuilder;
 
+const welcomeCommand = new SlashCommandBuilder()
+  .setName("welcome")
+  .setDescription("🍄 ตั้งค่าระบบต้อนรับสมาชิกใหม่")
+  .addSubcommand((sub) =>
+    sub
+      .setName("setup")
+      .setDescription("ตั้งค่าข้อความต้อนรับในห้องปัจจุบัน")
+      .addStringOption((opt) =>
+        opt
+          .setName("message")
+          .setDescription("ข้อความต้อนรับ (ใช้ {user} {username} {server} {count})")
+          .setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("image").setDescription("URL รูปภาพแบนเนอร์ (ถ้ามี)").setRequired(false)
+      )
+  )
+  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบต้อนรับ"))
+  .addSubcommand((sub) => sub.setName("test").setDescription("ทดสอบข้อความต้อนรับในห้องนี้"))
+  .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) as SlashCommandBuilder;
+
+const goodbyeCommand = new SlashCommandBuilder()
+  .setName("goodbye")
+  .setDescription("👋 ตั้งค่าระบบลาก่อนสมาชิก")
+  .addSubcommand((sub) =>
+    sub
+      .setName("setup")
+      .setDescription("ตั้งค่าข้อความลาก่อนในห้องปัจจุบัน")
+      .addStringOption((opt) =>
+        opt
+          .setName("message")
+          .setDescription("ข้อความลาก่อน (ใช้ {user} {username} {server} {count})")
+          .setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt.setName("image").setDescription("URL รูปภาพแบนเนอร์ (ถ้ามี)").setRequired(false)
+      )
+  )
+  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบลาก่อน"))
+  .addSubcommand((sub) => sub.setName("test").setDescription("ทดสอบข้อความลาก่อนในห้องนี้"))
+  .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) as SlashCommandBuilder;
+
 export const commands: Command[] = [
   { data: mushroomCommand, execute: executeMushroom },
   { data: warnCommand, execute: executeWarn },
@@ -438,4 +483,6 @@ export const commands: Command[] = [
   { data: serverinfoCommand, execute: executeServerinfo },
   { data: helpCommand, execute: executeHelp },
   { data: reactionRoleCommand, execute: executeReactionRole },
+  { data: welcomeCommand, execute: executeWelcome },
+  { data: goodbyeCommand, execute: executeGoodbye },
 ];
