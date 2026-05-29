@@ -15,6 +15,7 @@ import {
   executeShop,
   executeBuy,
   executeShopItem,
+  executeDaily,
   executeLeaderboard,
   executeGiveSpore,
   executeSetSpore,
@@ -533,6 +534,10 @@ const setSporeCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
+const dailyCommand = new SlashCommandBuilder()
+  .setName("daily")
+  .setDescription("📅 เช็คอินรายวันรับสปอร์ฟรี — ยิ่งเช็คต่อเนื่องยิ่งได้เยอะ!") as SlashCommandBuilder;
+
 const leaderboardCommand = new SlashCommandBuilder()
   .setName("leaderboard")
   .setDescription("🏆 ดูอันดับผู้เล่นที่มีสปอร์มากที่สุด Top 10")
@@ -647,6 +652,7 @@ export const commands: Command[] = [
   { data: buyCommand, execute: executeBuy },
   { data: giveSporeCommand, execute: executeGiveSpore },
   { data: setSporeCommand, execute: executeSetSpore },
+  { data: dailyCommand, execute: executeDaily },
   { data: leaderboardCommand, execute: executeLeaderboard },
   { data: farmConfigCommand, execute: executeFarmConfig },
   { data: shopItemCommand, execute: executeShopItem },

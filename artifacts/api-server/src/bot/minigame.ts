@@ -653,6 +653,103 @@ export async function executeSetSpore(interaction: ChatInputCommandInteraction):
   logger.info({ adminId: interaction.user.id, targetId: targetUser.id, amount }, "Spores set by admin");
 }
 
+export async function executeDaily(interaction: ChatInputCommandInteraction): Promise<void> {
+  const userId = interaction.user.id;
+  const player = await getOrCreatePlayer(userId);
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // วันนี้ 00:00
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000); // เมื่อวาน 00:00
+
+  const lastDaily = player.lastDailyTime ? new Date(player.lastDailyTime) : null;
+
+  // ถ้าเช็คอินวันนี้ไปแล้ว
+  if (lastDaily && lastDaily >= todayStart) {
+    const nextReset = new Date(todayStart.getTime() + 86_400_000);
+    const remainSec = Math.ceil((nextReset.getTime() - now.getTime()) / 1000);
+    const hours = Math.floor(remainSec / 3600);
+    const mins = Math.floor((remainSec % 3600) / 60);
+
+    const embed = new EmbedBuilder()
+      .setColor(Colors.Orange)
+      .setTitle("⏳ เช็คอินแล้ววันนี้!")
+      .setDescription(
+        `ท่านเช็คอินวันนี้ไปแล้วครับ!\nรอถึงเที่ยงคืนจึงจะเช็คอินใหม่ได้\n\n⏰ อีก **${hours} ชั่วโมง ${mins} นาที**`
+      )
+      .addFields(
+        { name: "🔥 สตรีคปัจจุบัน", value: `${player.dailyStreak} วันติดต่อกัน`, inline: true },
+        { name: "💰 สปอร์ที่มี", value: `${player.sporePoints.toLocaleString()} สปอร์`, inline: true }
+      )
+      .setThumbnail(interaction.user.displayAvatarURL())
+      .setFooter({ text: "Mushroom Kingdom 🍄 | กลับมาพรุ่งนี้นะครับ!" });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+    return;
+  }
+
+  // คำนวณ streak
+  const isConsecutive = lastDaily && lastDaily >= yesterdayStart;
+  const newStreak = isConsecutive ? player.dailyStreak + 1 : 1;
+  const reward = newStreak * 25;
+  const newPoints = player.sporePoints + reward;
+  const newAllTimeHigh = Math.max(player.allTimeHigh, newPoints);
+
+  await db
+    .update(mushroomPlayersTable)
+    .set({
+      sporePoints: newPoints,
+      allTimeHigh: newAllTimeHigh,
+      lastDailyTime: now,
+      dailyStreak: newStreak,
+    })
+    .where(eq(mushroomPlayersTable.userId, userId));
+
+  // ข้อความพิเศษตาม streak
+  let streakMsg = "";
+  if (newStreak >= 30) streakMsg = "🌟 ตำนาน! 30 วันติดต่อกัน!! สุดยอดมากครับ!";
+  else if (newStreak >= 14) streakMsg = "💎 เจ๋งมาก! 2 สัปดาห์ติดต่อกัน!";
+  else if (newStreak >= 7) streakMsg = "🔥 ครบ 1 สัปดาห์แล้ว! ไม่หยุดเลย!";
+  else if (newStreak >= 3) streakMsg = "⚡ กำลังดีเลย! อย่าหยุด!";
+  else if (newStreak === 1 && player.dailyStreak > 1) streakMsg = `💔 โอ้โห! สตรีค ${player.dailyStreak} วันหายไปแล้ว... เริ่มใหม่กันเถอะ!`;
+  else streakMsg = "🍄 เริ่มต้นดีมาก! กลับมาพรุ่งนี้ด้วยนะครับ";
+
+  // วันถัดไปจะได้เท่าไหร่
+  const nextReward = (newStreak + 1) * 25;
+
+  const embed = new EmbedBuilder()
+    .setColor(newStreak >= 7 ? 0xf1c40f : 0x2ecc71)
+    .setTitle(`${newStreak >= 7 ? "🔥" : "✅"} เช็คอินสำเร็จ! วันที่ ${newStreak}`)
+    .setDescription(streakMsg)
+    .setThumbnail(interaction.user.displayAvatarURL())
+    .addFields(
+      { name: "🍄 สปอร์ที่ได้รับ", value: `**+${reward.toLocaleString()}** สปอร์`, inline: true },
+      { name: "💼 สปอร์รวม", value: `**${newPoints.toLocaleString()}** สปอร์`, inline: true },
+      { name: "🔥 สตรีค", value: `**${newStreak}** วันติดต่อกัน`, inline: true },
+      {
+        name: "📅 พรุ่งนี้",
+        value: newStreak === 1
+          ? `เช็คอินวันพรุ่งนี้รับ **+${nextReward} สปอร์** (วันที่ 2)\nอย่าลืมมาด้วยนะครับ! 🍄`
+          : `เช็คอินต่อเนื่องรับ **+${nextReward} สปอร์** (วันที่ ${newStreak + 1})`,
+      }
+    )
+    .setFooter({ text: "Mushroom Kingdom 🍄 | เช็คอินได้วันละ 1 ครั้ง รีเซ็ตตอนเที่ยงคืน" })
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+
+  const logEmbed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("📅 เช็คอินรายวัน")
+    .addFields(
+      { name: "👤 ผู้เล่น", value: `${interaction.user.tag} (${userId})`, inline: true },
+      { name: "🔥 สตรีค", value: `${newStreak} วัน`, inline: true },
+      { name: "🍄 รางวัล", value: `+${reward} สปอร์`, inline: true }
+    )
+    .setTimestamp();
+
+  await sendLog(interaction.guildId!, interaction.client as never, logEmbed);
+  logger.info({ userId, streak: newStreak, reward, newPoints }, "Daily check-in");
+}
+
 export async function executeLeaderboard(interaction: ChatInputCommandInteraction): Promise<void> {
   const type = (interaction.options.getString("type") ?? "current") as "current" | "alltime";
 

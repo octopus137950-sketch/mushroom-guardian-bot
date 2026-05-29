@@ -9,6 +9,8 @@ export const mushroomPlayersTable = pgTable("mushroom_players", {
   farmLevel: integer("farm_level").notNull().default(1),
   farmExp: integer("farm_exp").notNull().default(0),
   lastFarmTime: timestamp("last_farm_time"),
+  lastDailyTime: timestamp("last_daily_time"),
+  dailyStreak: integer("daily_streak").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
