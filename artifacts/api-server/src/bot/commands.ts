@@ -21,6 +21,7 @@ import {
   executeSetSpore,
   executeFarmConfig,
 } from "./minigame";
+import { executeCasinoSetup } from "./casino";
 
 export interface Command {
   data: SlashCommandBuilder;
@@ -534,6 +535,11 @@ const setSporeCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
+const casinoSetupCommand = new SlashCommandBuilder()
+  .setName("casino-setup")
+  .setDescription("🎰 ติดตั้งแผงคาสิโนในช่องนี้ (admin only)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
 const dailyCommand = new SlashCommandBuilder()
   .setName("daily")
   .setDescription("📅 เช็คอินรายวันรับสปอร์ฟรี — ยิ่งเช็คต่อเนื่องยิ่งได้เยอะ!") as SlashCommandBuilder;
@@ -652,6 +658,7 @@ export const commands: Command[] = [
   { data: buyCommand, execute: executeBuy },
   { data: giveSporeCommand, execute: executeGiveSpore },
   { data: setSporeCommand, execute: executeSetSpore },
+  { data: casinoSetupCommand, execute: executeCasinoSetup },
   { data: dailyCommand, execute: executeDaily },
   { data: leaderboardCommand, execute: executeLeaderboard },
   { data: farmConfigCommand, execute: executeFarmConfig },

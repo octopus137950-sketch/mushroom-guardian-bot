@@ -127,7 +127,7 @@ function generateItemId(guildId: string, name: string): string {
   return `${base}_${suffix}`;
 }
 
-async function getOrCreatePlayer(userId: string): Promise<MushroomPlayer> {
+export async function getOrCreatePlayer(userId: string): Promise<MushroomPlayer> {
   const existing = await db
     .select()
     .from(mushroomPlayersTable)
@@ -164,7 +164,7 @@ async function getShopItem(guildId: string, itemId: string): Promise<MushroomSho
   return rows[0] ?? null;
 }
 
-async function sendLog(
+export async function sendLog(
   guildId: string,
   client: { guilds: { cache: Map<string, { channels: { cache: Map<string, unknown> } }> } } | null,
   embed: EmbedBuilder

@@ -9,6 +9,7 @@ import { commands } from "./commands";
 import { handleReactionAdd, handleReactionRemove } from "./reaction-roles";
 import { handleMemberWelcome, handleMemberGoodbye } from "./welcome-goodbye";
 import { getShopItems } from "./minigame";
+import { handleCasinoButton, handleCasinoModal } from "./casino";
 import { logger } from "../lib/logger";
 
 async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -84,6 +85,20 @@ export function registerEvents(client: Client): void {
     if (interaction.isAutocomplete()) {
       await handleAutocomplete(interaction).catch((err) => {
         logger.error({ err }, "Unhandled autocomplete error");
+      });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === "casino_bet") {
+      await handleCasinoButton(interaction).catch((err) => {
+        logger.error({ err }, "Casino button error");
+      });
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "casino_modal") {
+      await handleCasinoModal(interaction).catch((err) => {
+        logger.error({ err }, "Casino modal error");
       });
       return;
     }
