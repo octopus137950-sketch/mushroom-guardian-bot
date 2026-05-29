@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const mushroomPlayersTable = pgTable("mushroom_players", {
   userId: text("user_id").primaryKey(),
   sporePoints: integer("spore_points").notNull().default(0),
+  allTimeHigh: integer("all_time_high").notNull().default(0),
   farmLevel: integer("farm_level").notNull().default(1),
   farmExp: integer("farm_exp").notNull().default(0),
   lastFarmTime: timestamp("last_farm_time"),

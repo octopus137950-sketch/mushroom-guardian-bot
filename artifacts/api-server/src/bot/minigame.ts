@@ -14,7 +14,7 @@ import {
   type MushroomPlayer,
   type MushroomShopItem,
 } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -236,10 +236,13 @@ export async function executeFarm(interaction: ChatInputCommandInteraction): Pro
     leveledUp = true;
   }
 
+  const newAllTimeHigh = Math.max(player.allTimeHigh, newPoints);
+
   await db
     .update(mushroomPlayersTable)
     .set({
       sporePoints: newPoints,
+      allTimeHigh: newAllTimeHigh,
       farmExp: expLeft,
       farmLevel: newLevel,
       lastFarmTime: new Date(),
@@ -569,10 +572,11 @@ export async function executeGiveSpore(interaction: ChatInputCommandInteraction)
 
   const player = await getOrCreatePlayer(targetUser.id);
   const newPoints = player.sporePoints + amount;
+  const newAllTimeHigh = Math.max(player.allTimeHigh, newPoints);
 
   await db
     .update(mushroomPlayersTable)
-    .set({ sporePoints: newPoints })
+    .set({ sporePoints: newPoints, allTimeHigh: newAllTimeHigh })
     .where(eq(mushroomPlayersTable.userId, targetUser.id));
 
   const embed = new EmbedBuilder()
@@ -612,12 +616,15 @@ export async function executeSetSpore(interaction: ChatInputCommandInteraction):
     return;
   }
 
+  const existing = await getOrCreatePlayer(targetUser.id);
+  const newAllTimeHigh = Math.max(existing.allTimeHigh, amount);
+
   await db
     .insert(mushroomPlayersTable)
-    .values({ userId: targetUser.id, sporePoints: amount })
+    .values({ userId: targetUser.id, sporePoints: amount, allTimeHigh: newAllTimeHigh })
     .onConflictDoUpdate({
       target: mushroomPlayersTable.userId,
-      set: { sporePoints: amount },
+      set: { sporePoints: amount, allTimeHigh: newAllTimeHigh },
     });
 
   const embed = new EmbedBuilder()
@@ -644,6 +651,43 @@ export async function executeSetSpore(interaction: ChatInputCommandInteraction):
 
   await sendLog(interaction.guildId!, interaction.client as never, logEmbed);
   logger.info({ adminId: interaction.user.id, targetId: targetUser.id, amount }, "Spores set by admin");
+}
+
+export async function executeLeaderboard(interaction: ChatInputCommandInteraction): Promise<void> {
+  const type = (interaction.options.getString("type") ?? "current") as "current" | "alltime";
+
+  await interaction.deferReply();
+
+  const rows = await db
+    .select()
+    .from(mushroomPlayersTable)
+    .orderBy(desc(type === "alltime" ? mushroomPlayersTable.allTimeHigh : mushroomPlayersTable.sporePoints))
+    .limit(10);
+
+  if (rows.length === 0) {
+    await interaction.editReply({ content: "🍄 ยังไม่มีข้อมูลผู้เล่นในระบบ ใช้ `/farm` เพื่อเริ่มต้นได้เลย!" });
+    return;
+  }
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const title = type === "alltime" ? "🏆 อันดับสปอร์สูงสุดตลอดกาล" : "🍄 อันดับสปอร์ตอนนี้";
+
+  const lines: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const medal = medals[i] ?? `**${i + 1}.**`;
+    const spores = type === "alltime" ? row.allTimeHigh : row.sporePoints;
+    lines.push(`${medal} <@${row.userId}> — **${spores.toLocaleString()}** สปอร์  *(Lv.${row.farmLevel})*`);
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(type === "alltime" ? 0xf1c40f : 0x2ecc71)
+    .setTitle(title)
+    .setDescription(lines.join("\n"))
+    .setFooter({ text: `Mushroom Kingdom 🍄 | อัปเดต: ${new Date().toLocaleTimeString("th-TH")}` })
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed] });
 }
 
 export async function executeFarmConfig(interaction: ChatInputCommandInteraction): Promise<void> {

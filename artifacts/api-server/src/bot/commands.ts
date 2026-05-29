@@ -15,6 +15,7 @@ import {
   executeShop,
   executeBuy,
   executeShopItem,
+  executeLeaderboard,
   executeGiveSpore,
   executeSetSpore,
   executeFarmConfig,
@@ -532,6 +533,20 @@ const setSporeCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
+const leaderboardCommand = new SlashCommandBuilder()
+  .setName("leaderboard")
+  .setDescription("🏆 ดูอันดับผู้เล่นที่มีสปอร์มากที่สุด Top 10")
+  .addStringOption((opt) =>
+    opt
+      .setName("type")
+      .setDescription("ประเภทอันดับที่ต้องการดู")
+      .setRequired(false)
+      .addChoices(
+        { name: "🍄 สปอร์ตอนนี้", value: "current" },
+        { name: "🏆 สปอร์สูงสุดตลอดกาล", value: "alltime" }
+      )
+  ) as SlashCommandBuilder;
+
 const farmConfigCommand = new SlashCommandBuilder()
   .setName("farm-config")
   .setDescription("⚙️ [แอดมิน] ตั้งค่าระบบมินิเกม")
@@ -632,6 +647,7 @@ export const commands: Command[] = [
   { data: buyCommand, execute: executeBuy },
   { data: giveSporeCommand, execute: executeGiveSpore },
   { data: setSporeCommand, execute: executeSetSpore },
+  { data: leaderboardCommand, execute: executeLeaderboard },
   { data: farmConfigCommand, execute: executeFarmConfig },
   { data: shopItemCommand, execute: executeShopItem },
 ];
