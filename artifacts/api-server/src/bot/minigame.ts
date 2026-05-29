@@ -10,6 +10,7 @@ import { db } from "@workspace/db";
 import {
   mushroomPlayersTable,
   mushroomShopItemsTable,
+  guildConfigsTable,
   type MushroomPlayer,
   type MushroomShopItem,
 } from "@workspace/db/schema";
@@ -29,10 +30,6 @@ interface FarmEvent {
   exp: number;
   msg: string;
   color: number;
-}
-
-interface GuildGameConfig {
-  logChannelId?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -67,15 +64,25 @@ const FARM_EVENTS: FarmEvent[] = [
   },
 ];
 
-// ─── Guild config store (in-memory) ──────────────────────────────────────────
+// ─── Guild config DB helpers ──────────────────────────────────────────────────
 
-const guildConfigs = new Map<string, GuildGameConfig>();
+async function getLogChannelId(guildId: string): Promise<string | null> {
+  const rows = await db
+    .select({ logChannelId: guildConfigsTable.logChannelId })
+    .from(guildConfigsTable)
+    .where(eq(guildConfigsTable.guildId, guildId))
+    .limit(1);
+  return rows[0]?.logChannelId ?? null;
+}
 
-export function getGuildConfig(guildId: string): GuildGameConfig {
-  if (!guildConfigs.has(guildId)) {
-    guildConfigs.set(guildId, {});
-  }
-  return guildConfigs.get(guildId)!;
+async function setLogChannelId(guildId: string, channelId: string): Promise<void> {
+  await db
+    .insert(guildConfigsTable)
+    .values({ guildId, logChannelId: channelId, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: guildConfigsTable.guildId,
+      set: { logChannelId: channelId, updatedAt: new Date() },
+    });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -162,11 +169,12 @@ async function sendLog(
   client: { guilds: { cache: Map<string, { channels: { cache: Map<string, unknown> } }> } } | null,
   embed: EmbedBuilder
 ): Promise<void> {
-  const cfg = getGuildConfig(guildId);
-  if (!cfg.logChannelId || !client) return;
+  if (!client) return;
+  const logChannelId = await getLogChannelId(guildId);
+  if (!logChannelId) return;
   try {
     const guild = (client.guilds.cache as Map<string, { channels: { cache: Map<string, unknown> } }>).get(guildId);
-    const channel = guild?.channels.cache.get(cfg.logChannelId) as TextChannel | undefined;
+    const channel = guild?.channels.cache.get(logChannelId) as TextChannel | undefined;
     if (channel && "send" in channel) {
       await channel.send({ embeds: [embed] });
     }
@@ -640,10 +648,10 @@ export async function executeSetSpore(interaction: ChatInputCommandInteraction):
 
 export async function executeFarmConfig(interaction: ChatInputCommandInteraction): Promise<void> {
   const sub = interaction.options.getSubcommand();
-  const cfg = getGuildConfig(interaction.guildId!);
+  const guildId = interaction.guildId!;
 
   if (sub === "log-channel") {
-    cfg.logChannelId = interaction.channelId;
+    await setLogChannelId(guildId, interaction.channelId);
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
@@ -652,18 +660,21 @@ export async function executeFarmConfig(interaction: ChatInputCommandInteraction
           .setDescription(`ตั้งค่าห้อง Log เป็น <#${interaction.channelId}> แล้วครับ\nธุรกรรมทั้งหมดจะถูกส่งมาที่นี่`)
           .setFooter({ text: "Mushroom Kingdom 🍄" }),
       ],
-      ephemeral: true,
+      flags: 64,
     });
   } else if (sub === "info") {
-    const items = await getShopItems(interaction.guildId!);
+    const [items, logChannelId] = await Promise.all([
+      getShopItems(guildId),
+      getLogChannelId(guildId),
+    ]);
     const embed = new EmbedBuilder()
       .setColor(0x8b5e3c)
       .setTitle("⚙️ การตั้งค่ามินิเกม")
       .addFields(
-        { name: "📋 ห้อง Log", value: cfg.logChannelId ? `<#${cfg.logChannelId}>` : "❌ ยังไม่ตั้งค่า", inline: true },
+        { name: "📋 ห้อง Log", value: logChannelId ? `<#${logChannelId}>` : "❌ ยังไม่ตั้งค่า", inline: true },
         { name: "🏪 สินค้าในร้าน", value: `${items.length} รายการ`, inline: true }
       )
       .setFooter({ text: "Mushroom Kingdom 🍄" });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: 64 });
   }
 }

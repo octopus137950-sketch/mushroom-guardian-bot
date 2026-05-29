@@ -15,6 +15,22 @@ export const insertMushroomPlayerSchema = createInsertSchema(mushroomPlayersTabl
 export type InsertMushroomPlayer = z.infer<typeof insertMushroomPlayerSchema>;
 export type MushroomPlayer = typeof mushroomPlayersTable.$inferSelect;
 
+export const guildConfigsTable = pgTable("guild_configs", {
+  guildId: text("guild_id").primaryKey(),
+  welcomeChannelId: text("welcome_channel_id"),
+  welcomeMessage: text("welcome_message"),
+  welcomeImageUrl: text("welcome_image_url"),
+  welcomeEnabled: integer("welcome_enabled").notNull().default(0),
+  goodbyeChannelId: text("goodbye_channel_id"),
+  goodbyeMessage: text("goodbye_message"),
+  goodbyeImageUrl: text("goodbye_image_url"),
+  goodbyeEnabled: integer("goodbye_enabled").notNull().default(0),
+  logChannelId: text("log_channel_id"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type GuildConfig = typeof guildConfigsTable.$inferSelect;
+
 export const mushroomShopItemsTable = pgTable("mushroom_shop_items", {
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
