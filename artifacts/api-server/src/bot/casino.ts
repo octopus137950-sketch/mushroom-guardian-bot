@@ -306,20 +306,5 @@ export async function handleCasinoModal(interaction: ModalSubmitInteraction): Pr
 
   await interaction.editReply({ embeds: [resultEmbed] });
 
-  const guildId = interaction.guildId;
-  if (guildId) {
-    const logEmbed = new EmbedBuilder()
-      .setColor(result.isWin ? 0x2ecc71 : Colors.Red)
-      .setTitle("🎰 คาสิโน")
-      .addFields(
-        { name: "👤 ผู้เล่น",     value: `${interaction.user.tag} (${userId})`,  inline: true },
-        { name: "🎲 ผล",          value: reelDisplay,                            inline: true },
-        { name: "💰 เดิมพัน",     value: `${bet.toLocaleString()} สปอร์`,        inline: true },
-        { name: "📊 ผลลัพธ์",     value: changeText,                             inline: true }
-      )
-      .setTimestamp();
-    await sendLog(guildId, interaction.client as never, logEmbed);
-  }
-
   logger.info({ userId, bet, reels: reelDisplay, multiplier: result.multiplier, netChange }, "Casino spin");
 }

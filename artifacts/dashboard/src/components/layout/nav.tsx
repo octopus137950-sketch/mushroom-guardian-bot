@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { Shield, Leaf, Trophy } from "lucide-react";
+import { Shield, Leaf, Trophy, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Nav() {
@@ -9,6 +9,7 @@ export function Nav() {
   const links = [
     { href: "/", label: "Command Center", icon: Shield },
     { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+    { href: "/commands", label: "Commands", icon: BookOpen },
   ];
 
   return (

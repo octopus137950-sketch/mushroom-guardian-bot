@@ -23,7 +23,7 @@ import {
   executeChannelConfig,
 } from "./minigame";
 import { executeCasinoSetup, executeCasinoRemove } from "./casino";
-import { executeTradeCrypto, executeTradeForex } from "./trading";
+import { executeTradeSetup, executeTradeRemove } from "./trading";
 import { executeAutodelete } from "./autodelete";
 
 export interface Command {
@@ -571,37 +571,15 @@ const chatWelcomeCommand = new SlashCommandBuilder()
   .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
-const tradeCommand = new SlashCommandBuilder()
-  .setName("trade")
-  .setDescription("💹 ดูราคาตลาดเรียลไทม์")
-  .addSubcommand((sub) =>
-    sub
-      .setName("crypto")
-      .setDescription("🪙 ดูราคาคริปโตเคอร์เรนซี")
-      .addStringOption((opt) =>
-        opt
-          .setName("coin")
-          .setDescription("ชื่อเหรียญ เช่น bitcoin, eth, btc, sol, doge")
-          .setRequired(true)
-      )
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName("forex")
-      .setDescription("💱 ดูอัตราแลกเปลี่ยนสกุลเงิน")
-      .addStringOption((opt) =>
-        opt
-          .setName("from")
-          .setDescription("สกุลเงินต้นทาง เช่น USD, THB, EUR")
-          .setRequired(true)
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName("to")
-          .setDescription("สกุลเงินปลายทาง เช่น THB, JPY, GBP")
-          .setRequired(true)
-      )
-  ) as SlashCommandBuilder;
+const tradeSetupCommand = new SlashCommandBuilder()
+  .setName("trade-setup")
+  .setDescription("💹 ติดตั้งแผงเทรดในห้องปัจจุบัน (แอดมิน)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const tradeRemoveCommand = new SlashCommandBuilder()
+  .setName("trade-remove")
+  .setDescription("🗑️ ถอดแผงเทรดออกจากเซิร์ฟเวอร์ (แอดมิน)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
 const autodeleteCommand = new SlashCommandBuilder()
   .setName("autodelete")
@@ -733,15 +711,6 @@ const shopItemCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
-async function executeTrade(interaction: ChatInputCommandInteraction) {
-  const sub = interaction.options.getSubcommand();
-  if (sub === "crypto") {
-    await executeTradeCrypto(interaction);
-  } else {
-    await executeTradeForex(interaction);
-  }
-}
-
 export const commands: Command[] = [
   { data: mushroomCommand, execute: executeMushroom },
   { data: warnCommand, execute: executeWarn },
@@ -770,8 +739,9 @@ export const commands: Command[] = [
   { data: leaderboardCommand, execute: executeLeaderboard },
   { data: farmConfigCommand, execute: executeFarmConfig },
   { data: shopItemCommand, execute: executeShopItem },
-  // Trading
-  { data: tradeCommand, execute: executeTrade },
+  // Trading panel
+  { data: tradeSetupCommand, execute: executeTradeSetup },
+  { data: tradeRemoveCommand, execute: executeTradeRemove },
   // Auto-delete
   { data: autodeleteCommand, execute: executeAutodelete },
 ];

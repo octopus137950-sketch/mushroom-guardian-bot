@@ -13,6 +13,7 @@ import { getShopItems, handleMonsterButton } from "./minigame";
 import { handleCasinoButton, handleCasinoModal } from "./casino";
 import { handleChatWelcome } from "./welcome-goodbye";
 import { handleAutoDelete } from "./autodelete";
+import { handleTradingButton, handleTradingSelect } from "./trading";
 import { logger } from "../lib/logger";
 
 async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -112,6 +113,20 @@ export function registerEvents(client: Client): void {
     if (interaction.isModalSubmit() && interaction.customId === "casino_modal") {
       await handleCasinoModal(interaction).catch((err) => {
         logger.error({ err }, "Casino modal error");
+      });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === "trading_trade") {
+      await handleTradingButton(interaction).catch((err) => {
+        logger.error({ err }, "Trading button error");
+      });
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === "trading_select") {
+      await handleTradingSelect(interaction).catch((err) => {
+        logger.error({ err }, "Trading select error");
       });
       return;
     }

@@ -32,6 +32,8 @@ export const guildConfigsTable = pgTable("guild_configs", {
   farmChannelId: text("farm_channel_id"),
   casinoChannelId: text("casino_channel_id"),
   casinoPanelMessageId: text("casino_panel_message_id"),
+  tradingChannelId: text("trading_channel_id"),
+  tradingPanelMessageId: text("trading_panel_message_id"),
   chatWelcomeEnabled: integer("chat_welcome_enabled").notNull().default(0),
   chatWelcomeChannelId: text("chat_welcome_channel_id"),
   chatWelcomeMessage: text("chat_welcome_message"),
