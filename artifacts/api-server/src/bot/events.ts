@@ -4,12 +4,15 @@ import {
   GuildMember,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  Message,
 } from "discord.js";
 import { commands } from "./commands";
 import { handleReactionAdd, handleReactionRemove } from "./reaction-roles";
 import { handleMemberWelcome, handleMemberGoodbye } from "./welcome-goodbye";
-import { getShopItems } from "./minigame";
+import { getShopItems, handleMonsterButton } from "./minigame";
 import { handleCasinoButton, handleCasinoModal } from "./casino";
+import { handleChatWelcome } from "./welcome-goodbye";
+import { handleAutoDelete } from "./autodelete";
 import { logger } from "../lib/logger";
 
 async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -66,6 +69,9 @@ export function registerEvents(client: Client): void {
     await handleMemberWelcome(member).catch((err) => {
       logger.error({ err, userId: member.id }, "Welcome handler error");
     });
+    await handleChatWelcome(member).catch((err) => {
+      logger.error({ err, userId: member.id }, "Chat welcome handler error");
+    });
   });
 
   client.on(Events.GuildMemberRemove, async (member) => {
@@ -85,6 +91,13 @@ export function registerEvents(client: Client): void {
     if (interaction.isAutocomplete()) {
       await handleAutocomplete(interaction).catch((err) => {
         logger.error({ err }, "Unhandled autocomplete error");
+      });
+      return;
+    }
+
+    if (interaction.isButton() && (interaction.customId.startsWith("monster_fight_") || interaction.customId.startsWith("monster_run_"))) {
+      await handleMonsterButton(interaction).catch((err) => {
+        logger.error({ err }, "Monster button error");
       });
       return;
     }
@@ -119,6 +132,12 @@ export function registerEvents(client: Client): void {
         await interaction.reply(reply);
       }
     }
+  });
+
+  client.on(Events.MessageCreate, async (message: Message) => {
+    await handleAutoDelete(message).catch((err) => {
+      logger.error({ err }, "Auto-delete handler error");
+    });
   });
 
   client.on(Events.MessageReactionAdd, handleReactionAdd);

@@ -94,6 +94,17 @@ export async function handleMemberWelcome(member: GuildMember): Promise<void> {
   }
 }
 
+export async function handleChatWelcome(member: GuildMember): Promise<void> {
+  const cfg = await getGuildConfig(member.guild.id);
+  if (!cfg?.chatWelcomeEnabled || !cfg.chatWelcomeChannelId || !cfg.chatWelcomeMessage) return;
+  const channel = member.guild.channels.cache.get(cfg.chatWelcomeChannelId) as TextChannel | undefined;
+  if (!channel || !("send" in channel)) return;
+  const text = replacePlaceholders(cfg.chatWelcomeMessage, member);
+  await channel.send(text).catch((err) => {
+    logger.warn({ err, channelId: cfg.chatWelcomeChannelId }, "Chat welcome send failed");
+  });
+}
+
 export async function handleMemberGoodbye(member: GuildMember): Promise<void> {
   const cfg = await getGuildConfig(member.guild.id);
   if (cfg?.goodbyeEnabled && cfg.goodbyeChannelId && cfg.goodbyeMessage) {
@@ -102,6 +113,63 @@ export async function handleMemberGoodbye(member: GuildMember): Promise<void> {
 }
 
 // ─── Command handlers ─────────────────────────────────────────────────────────
+
+export async function executeChatWelcome(interaction: ChatInputCommandInteraction): Promise<void> {
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId!;
+
+  if (sub === "setup") {
+    const message = interaction.options.getString("message", true);
+    await upsertGuildConfig(guildId, {
+      chatWelcomeEnabled: 1,
+      chatWelcomeChannelId: interaction.channelId,
+      chatWelcomeMessage: message,
+    });
+    const embed = new EmbedBuilder()
+      .setColor(Colors.Green)
+      .setTitle("✅ ตั้งค่าข้อความต้อนรับในแชทแล้ว!")
+      .addFields(
+        { name: "📍 ห้อง", value: `<#${interaction.channelId}>`, inline: true },
+        { name: "📝 ข้อความตัวอย่าง", value: replacePlaceholders(message, interaction.member as GuildMember) }
+      )
+      .addFields({ name: "💡 Placeholder", value: "`{user}` `{username}` `{tag}` `{server}` `{count}`" })
+      .setFooter({ text: "ใช้ /chat-welcome test เพื่อทดสอบ" });
+    await interaction.reply({ embeds: [embed], flags: 64 });
+
+  } else if (sub === "disable") {
+    await upsertGuildConfig(guildId, { chatWelcomeEnabled: 0 });
+    await interaction.reply({ content: "✅ ปิดระบบต้อนรับในแชทแล้ว", flags: 64 });
+
+  } else if (sub === "remove") {
+    await upsertGuildConfig(guildId, {
+      chatWelcomeEnabled: 0,
+      chatWelcomeChannelId: null,
+      chatWelcomeMessage: null,
+    });
+    await interaction.reply({ content: "🗑️ ลบการตั้งค่าต้อนรับในแชทเรียบร้อยแล้ว", flags: 64 });
+
+  } else if (sub === "test") {
+    const cfg = await getGuildConfig(guildId);
+    if (!cfg?.chatWelcomeEnabled || !cfg.chatWelcomeChannelId || !cfg.chatWelcomeMessage) {
+      await interaction.reply({ content: "❌ ยังไม่ได้ตั้งค่า ใช้ `/chat-welcome setup` ก่อน", flags: 64 });
+      return;
+    }
+    await handleChatWelcome(interaction.member as GuildMember);
+    await interaction.reply({ content: `✅ ส่งข้อความทดสอบไปที่ <#${cfg.chatWelcomeChannelId}> แล้ว`, flags: 64 });
+
+  } else if (sub === "info") {
+    const cfg = await getGuildConfig(guildId);
+    const embed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("📋 การตั้งค่าต้อนรับในแชท")
+      .addFields(
+        { name: "สถานะ", value: cfg?.chatWelcomeEnabled ? "✅ เปิด" : "❌ ปิด", inline: true },
+        { name: "ห้อง", value: cfg?.chatWelcomeChannelId ? `<#${cfg.chatWelcomeChannelId}>` : "—", inline: true },
+        { name: "ข้อความ", value: cfg?.chatWelcomeMessage ?? "—" }
+      );
+    await interaction.reply({ embeds: [embed], flags: 64 });
+  }
+}
 
 export async function executeWelcome(interaction: ChatInputCommandInteraction): Promise<void> {
   const sub = interaction.options.getSubcommand();
@@ -141,6 +209,15 @@ export async function executeWelcome(interaction: ChatInputCommandInteraction): 
   } else if (sub === "disable") {
     await upsertGuildConfig(guildId, { welcomeEnabled: 0 });
     await interaction.reply({ content: "✅ ปิดระบบต้อนรับแล้ว", flags: 64 });
+
+  } else if (sub === "remove") {
+    await upsertGuildConfig(guildId, {
+      welcomeEnabled: 0,
+      welcomeChannelId: null,
+      welcomeMessage: null,
+      welcomeImageUrl: null,
+    });
+    await interaction.reply({ content: "🗑️ ลบการตั้งค่าระบบต้อนรับทั้งหมดแล้ว", flags: 64 });
 
   } else if (sub === "test") {
     const cfg = await getGuildConfig(guildId);
@@ -206,6 +283,15 @@ export async function executeGoodbye(interaction: ChatInputCommandInteraction): 
   } else if (sub === "disable") {
     await upsertGuildConfig(guildId, { goodbyeEnabled: 0 });
     await interaction.reply({ content: "✅ ปิดระบบลาก่อนแล้ว", flags: 64 });
+
+  } else if (sub === "remove") {
+    await upsertGuildConfig(guildId, {
+      goodbyeEnabled: 0,
+      goodbyeChannelId: null,
+      goodbyeMessage: null,
+      goodbyeImageUrl: null,
+    });
+    await interaction.reply({ content: "🗑️ ลบการตั้งค่าระบบลาก่อนทั้งหมดแล้ว", flags: 64 });
 
   } else if (sub === "test") {
     const cfg = await getGuildConfig(guildId);

@@ -1,6 +1,10 @@
 import {
   ChatInputCommandInteraction,
+  ButtonInteraction,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Colors,
   PermissionFlagsBits,
   GuildMember,
@@ -23,14 +27,31 @@ interface FarmEvent {
   weight: number;
   name: string;
   emoji: string;
-  type: "add" | "subtract" | "percent";
+  type: "add" | "subtract" | "percent" | "monster";
   min?: number;
   max?: number;
   percent?: number;
+  winMin?: number;
+  winMax?: number;
+  lossMin?: number;
+  lossMax?: number;
   exp: number;
   msg: string;
   color: number;
 }
+
+interface PendingFight {
+  monsterName: string;
+  monsterEmoji: string;
+  winMin: number;
+  winMax: number;
+  lossMin: number;
+  lossMax: number;
+  exp: number;
+  expiresAt: number;
+}
+
+const pendingFights = new Map<string, PendingFight>();
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -61,6 +82,24 @@ const FARM_EVENTS: FarmEvent[] = [
     weight: 5, name: "นกฮูกขโมยของ", emoji: "🦉", type: "percent", percent: 10, exp: 5,
     msg: "โชคร้ายจริง! นกฮูกลึกลับบินโฉบขโมยตะกร้าเห็ดของท่านไปต่อหน้าต่อตา!",
     color: 0x95a5a6,
+  },
+  {
+    weight: 12, name: "หนอนผีเสื้อยักษ์", emoji: "🐛", type: "monster",
+    winMin: 35, winMax: 65, lossMin: 15, lossMax: 30, exp: 8,
+    msg: "⚠️ หนอนผีเสื้อยักษ์กัดขวางทาง! จะสู้หรือหนี?",
+    color: 0x8b4513,
+  },
+  {
+    weight: 7, name: "งูพิษเขียว", emoji: "🐍", type: "monster",
+    winMin: 70, winMax: 120, lossMin: 35, lossMax: 60, exp: 12,
+    msg: "⚠️ งูพิษเขียวโผล่จากพุ่มเห็ด! จะสู้หรือหนี?",
+    color: 0x27ae60,
+  },
+  {
+    weight: 3, name: "ไดโนเสาร์เห็ดโบราณ", emoji: "🦖", type: "monster",
+    winMin: 150, winMax: 250, lossMin: 70, lossMax: 120, exp: 20,
+    msg: "⚠️ ไดโนเสาร์เห็ดโบราณปรากฏตัว! มันหายากมาก… จะสู้หรือหนี?",
+    color: 0xe74c3c,
   },
 ];
 
@@ -185,8 +224,38 @@ export async function sendLog(
 
 // ─── Command Handlers ────────────────────────────────────────────────────────
 
+// ─── Channel restriction helper ───────────────────────────────────────────────
+
+async function checkFarmChannel(guildId: string | null, channelId: string): Promise<boolean> {
+  if (!guildId) return true;
+  const rows = await db
+    .select({ farmChannelId: guildConfigsTable.farmChannelId })
+    .from(guildConfigsTable)
+    .where(eq(guildConfigsTable.guildId, guildId))
+    .limit(1);
+  const farmChannelId = rows[0]?.farmChannelId;
+  if (!farmChannelId) return true;
+  return channelId === farmChannelId;
+}
+
 export async function executeFarm(interaction: ChatInputCommandInteraction): Promise<void> {
   const userId = interaction.user.id;
+
+  const allowed = await checkFarmChannel(interaction.guildId, interaction.channelId);
+  if (!allowed) {
+    const rows = await db
+      .select({ farmChannelId: guildConfigsTable.farmChannelId })
+      .from(guildConfigsTable)
+      .where(eq(guildConfigsTable.guildId, interaction.guildId!))
+      .limit(1);
+    const farmChannelId = rows[0]?.farmChannelId!;
+    await interaction.reply({
+      content: `❌ ใช้คำสั่ง \`/farm\` ได้ในห้อง <#${farmChannelId}> เท่านั้นนะครับ!`,
+      flags: 64,
+    });
+    return;
+  }
+
   const player = await getOrCreatePlayer(userId);
 
   const now = Date.now();
@@ -201,11 +270,62 @@ export async function executeFarm(interaction: ChatInputCommandInteraction): Pro
       .setDescription(`ท่านเพิ่งฟาร์มไปหยกๆ ต้องรออีก **${remaining} วินาที** ก่อนนะครับ!\nพักดื่มน้ำชาก่อนแล้วค่อยกลับมาฟาร์มใหม่ 🍵`)
       .setThumbnail(interaction.user.displayAvatarURL())
       .setFooter({ text: "Mushroom Kingdom 🍄" });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: 64 });
     return;
   }
 
   const event = rollEvent();
+
+  // ─── Monster event: show fight/run buttons ────────────────────────────────
+  if (event.type === "monster") {
+    await db
+      .update(mushroomPlayersTable)
+      .set({ lastFarmTime: new Date() })
+      .where(eq(mushroomPlayersTable.userId, userId));
+
+    pendingFights.set(userId, {
+      monsterName: event.name,
+      monsterEmoji: event.emoji,
+      winMin: event.winMin!,
+      winMax: event.winMax!,
+      lossMin: event.lossMin!,
+      lossMax: event.lossMax!,
+      exp: event.exp,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    });
+    setTimeout(() => pendingFights.delete(userId), 5 * 60 * 1000);
+
+    const winChance = Math.min(85, 40 + (player.farmLevel - 1) * 3);
+    const embed = new EmbedBuilder()
+      .setColor(event.color)
+      .setTitle(`${event.emoji} ${event.name} ปรากฏตัว!`)
+      .setDescription(`${event.msg}\n\n> ${rarityLabel(event)}`)
+      .setThumbnail(interaction.user.displayAvatarURL())
+      .addFields(
+        { name: "⚔️ โอกาสชนะ", value: `${winChance}%`, inline: true },
+        { name: "🏆 รางวัลถ้าชนะ", value: `+${event.winMin}~${event.winMax} สปอร์`, inline: true },
+        { name: "💀 เสียถ้าแพ้", value: `-${event.lossMin}~${event.lossMax} สปอร์`, inline: true },
+      )
+      .setFooter({ text: "⏰ มีเวลา 5 นาทีในการตัดสินใจ" })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`monster_fight_${userId}`)
+        .setLabel("⚔️ สู้!")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`monster_run_${userId}`)
+        .setLabel("🏃 หนี!")
+        .setStyle(ButtonStyle.Secondary),
+    );
+
+    await interaction.reply({ embeds: [embed], components: [row] });
+    logger.info({ userId, monster: event.name }, "Monster encounter");
+    return;
+  }
+
+  // ─── Normal event ─────────────────────────────────────────────────────────
   const levelBonus = (player.farmLevel - 1) * 2;
   let pointChange = 0;
   let pointDesc = "";
@@ -285,6 +405,102 @@ export async function executeFarm(interaction: ChatInputCommandInteraction): Pro
   }
 
   logger.info({ userId, event: event.name, pointChange, newPoints, newLevel }, "Farm result");
+}
+
+// ─── Monster fight/run button handler ────────────────────────────────────────
+
+export async function handleMonsterButton(interaction: ButtonInteraction): Promise<void> {
+  const isFight = interaction.customId.startsWith("monster_fight_");
+  const userId = interaction.customId.replace(/^monster_(fight|run)_/, "");
+
+  if (interaction.user.id !== userId) {
+    await interaction.reply({ content: "❌ นี่ไม่ใช่การต่อสู้ของท่านนะครับ!", flags: 64 });
+    return;
+  }
+
+  const fight = pendingFights.get(userId);
+  if (!fight || Date.now() > fight.expiresAt) {
+    await interaction.update({ components: [] });
+    await interaction.followUp({ content: "⏰ หมดเวลาแล้ว มอนสเตอร์หนีไปแล้ว!", flags: 64 });
+    return;
+  }
+
+  pendingFights.delete(userId);
+  const player = await getOrCreatePlayer(userId);
+
+  if (!isFight) {
+    const embed = new EmbedBuilder()
+      .setColor(Colors.Grey)
+      .setTitle("🏃 หนีสำเร็จ!")
+      .setDescription(`ท่านรีบวิ่งหนี **${fight.monsterEmoji} ${fight.monsterName}** อย่างรวดเร็ว!\nโชคดีที่ไม่เสียสปอร์ แต่ก็ไม่ได้อะไรเหมือนกัน`)
+      .setThumbnail(interaction.user.displayAvatarURL())
+      .addFields({ name: "💼 สปอร์คงเหลือ", value: `${player.sporePoints.toLocaleString()} สปอร์`, inline: true })
+      .setFooter({ text: "Mushroom Kingdom 🍄 | บางทีหนีก็เป็นทางเลือกที่ดี" });
+    await interaction.update({ embeds: [embed], components: [] });
+    return;
+  }
+
+  const winChance = Math.min(85, 40 + (player.farmLevel - 1) * 3);
+  const isWin = Math.random() * 100 < winChance;
+
+  let pointChange: number;
+  let newExp = player.farmExp + fight.exp;
+  let newLevel = player.farmLevel;
+  let leveledUp = false;
+  let expLeft = newExp;
+
+  if (isWin) {
+    pointChange = randInt(fight.winMin, fight.winMax) + (player.farmLevel - 1) * 2;
+  } else {
+    pointChange = -randInt(fight.lossMin, fight.lossMax);
+  }
+
+  while (expLeft >= expForNextLevel(newLevel)) {
+    expLeft -= expForNextLevel(newLevel);
+    newLevel++;
+    leveledUp = true;
+  }
+
+  const newPoints = Math.max(0, player.sporePoints + pointChange);
+  const newAllTimeHigh = Math.max(player.allTimeHigh, newPoints);
+
+  await db
+    .update(mushroomPlayersTable)
+    .set({ sporePoints: newPoints, allTimeHigh: newAllTimeHigh, farmExp: expLeft, farmLevel: newLevel })
+    .where(eq(mushroomPlayersTable.userId, userId));
+
+  const bar = expBar(expLeft, expForNextLevel(newLevel));
+  const embed = new EmbedBuilder()
+    .setColor(isWin ? 0x2ecc71 : Colors.Red)
+    .setTitle(isWin ? `⚔️ ชนะ! ${fight.monsterEmoji} ${fight.monsterName} ล้มลง!` : `💀 แพ้! ${fight.monsterEmoji} ${fight.monsterName} แข็งแกร่งเกินไป!`)
+    .setDescription(
+      isWin
+        ? `ท่านสู้กับ **${fight.monsterName}** และได้รับชัยชนะ! มันวิ่งหนีพร้อมทิ้งสปอร์เอาไว้!`
+        : `ท่านสู้กับ **${fight.monsterName}** แต่พ่ายแพ้ มันหนีไปพร้อมสปอร์บางส่วนของท่าน...`
+    )
+    .setThumbnail(interaction.user.displayAvatarURL())
+    .addFields(
+      { name: isWin ? "🏆 ได้รับ" : "💸 เสียไป", value: `${isWin ? "+" : ""}${pointChange.toLocaleString()} สปอร์`, inline: true },
+      { name: "💼 สปอร์รวม", value: `${newPoints.toLocaleString()} สปอร์`, inline: true },
+      { name: `📊 Lv.${newLevel} EXP`, value: `\`${bar}\` ${expLeft}/${expForNextLevel(newLevel)}`, inline: true },
+    )
+    .setFooter({ text: "Mushroom Kingdom 🍄" })
+    .setTimestamp();
+
+  await interaction.update({ embeds: [embed], components: [] });
+
+  if (leveledUp) {
+    await interaction.followUp({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setTitle("🎉 เลเวลอัป!")
+          .setDescription(`เลเวลอัปเป็น **Lv.${newLevel}** แล้ว! 🍄🎊`)
+      ],
+    });
+  }
+
+  logger.info({ userId, monster: fight.monsterName, isWin, pointChange, newPoints }, "Monster fight result");
 }
 
 export async function executeWallet(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -748,6 +964,46 @@ export async function executeDaily(interaction: ChatInputCommandInteraction): Pr
 
   await sendLog(interaction.guildId!, interaction.client as never, logEmbed);
   logger.info({ userId, streak: newStreak, reward, newPoints }, "Daily check-in");
+}
+
+export async function executeChannelConfig(interaction: ChatInputCommandInteraction): Promise<void> {
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId!;
+
+  if (sub === "set-farm") {
+    await db
+      .insert(guildConfigsTable)
+      .values({ guildId, farmChannelId: interaction.channelId, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: guildConfigsTable.guildId, set: { farmChannelId: interaction.channelId, updatedAt: new Date() } });
+    await interaction.reply({
+      content: `✅ ตั้งช่อง <#${interaction.channelId}> เป็นช่องฟาร์มเห็ดแล้ว!\nคำสั่ง \`/farm\` จะใช้ได้เฉพาะในช่องนี้เท่านั้น`,
+      flags: 64,
+    });
+
+  } else if (sub === "reset-farm") {
+    await db
+      .insert(guildConfigsTable)
+      .values({ guildId, farmChannelId: null, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: guildConfigsTable.guildId, set: { farmChannelId: null, updatedAt: new Date() } });
+    await interaction.reply({ content: "✅ ยกเลิกข้อจำกัดช่องฟาร์มแล้ว ใช้ `/farm` ได้ทุกช่อง", flags: 64 });
+
+  } else if (sub === "info") {
+    const rows = await db
+      .select({ farmChannelId: guildConfigsTable.farmChannelId, casinoChannelId: guildConfigsTable.casinoChannelId })
+      .from(guildConfigsTable)
+      .where(eq(guildConfigsTable.guildId, guildId))
+      .limit(1);
+    const cfg = rows[0];
+    const embed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle("📍 การตั้งค่าช่องระบบต่างๆ")
+      .addFields(
+        { name: "🌿 ช่องฟาร์มเห็ด", value: cfg?.farmChannelId ? `<#${cfg.farmChannelId}>` : "ไม่จำกัด (ทุกช่อง)", inline: true },
+        { name: "🎰 ช่องคาสิโน", value: cfg?.casinoChannelId ? `<#${cfg.casinoChannelId}>` : "ยังไม่ตั้งค่า", inline: true },
+      )
+      .setFooter({ text: "Mushroom-Guardian-Bot 🍄" });
+    await interaction.reply({ embeds: [embed], flags: 64 });
+  }
 }
 
 export async function executeLeaderboard(interaction: ChatInputCommandInteraction): Promise<void> {

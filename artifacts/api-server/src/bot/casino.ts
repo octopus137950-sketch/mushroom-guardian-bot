@@ -13,7 +13,7 @@ import {
   TextChannel,
 } from "discord.js";
 import { db } from "@workspace/db";
-import { mushroomPlayersTable } from "@workspace/db/schema";
+import { mushroomPlayersTable, guildConfigsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getOrCreatePlayer, sendLog } from "./minigame";
 import { logger } from "../lib/logger";
@@ -96,6 +96,24 @@ function computeResult(reels: [SlotSymbol, SlotSymbol, SlotSymbol]): CasinoResul
   return { multiplier: 0, label: "💸 เสียเดิมพัน... โชคดีครั้งหน้า!", color: Colors.Red, isWin: false };
 }
 
+// ─── Guild config helpers ─────────────────────────────────────────────────────
+
+async function upsertCasinoConfig(guildId: string, patch: { casinoChannelId?: string | null; casinoPanelMessageId?: string | null }): Promise<void> {
+  await db
+    .insert(guildConfigsTable)
+    .values({ guildId, ...patch, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: guildConfigsTable.guildId, set: { ...patch, updatedAt: new Date() } });
+}
+
+async function getCasinoConfig(guildId: string): Promise<{ casinoChannelId: string | null; casinoPanelMessageId: string | null } | null> {
+  const rows = await db
+    .select({ casinoChannelId: guildConfigsTable.casinoChannelId, casinoPanelMessageId: guildConfigsTable.casinoPanelMessageId })
+    .from(guildConfigsTable)
+    .where(eq(guildConfigsTable.guildId, guildId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 // ─── /casino-setup ────────────────────────────────────────────────────────────
 
 export async function executeCasinoSetup(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -134,12 +152,55 @@ export async function executeCasinoSetup(interaction: ChatInputCommandInteractio
   );
 
   await interaction.reply({ content: "✅ ติดตั้งแผงคาสิโนสำเร็จ!", flags: 64 });
-  await (interaction.channel as TextChannel | null)?.send({ embeds: [embed], components: [row] });
+  const msg = await (interaction.channel as TextChannel | null)?.send({ embeds: [embed], components: [row] });
+
+  if (interaction.guildId && msg) {
+    await upsertCasinoConfig(interaction.guildId, {
+      casinoChannelId: interaction.channelId,
+      casinoPanelMessageId: msg.id,
+    });
+  }
+}
+
+// ─── /casino-remove ───────────────────────────────────────────────────────────
+
+export async function executeCasinoRemove(interaction: ChatInputCommandInteraction): Promise<void> {
+  const guildId = interaction.guildId!;
+  const cfg = await getCasinoConfig(guildId);
+
+  if (!cfg?.casinoChannelId) {
+    await interaction.reply({ content: "❌ ยังไม่ได้ติดตั้งคาสิโนในเซิร์ฟเวอร์นี้ครับ", flags: 64 });
+    return;
+  }
+
+  try {
+    if (cfg.casinoPanelMessageId) {
+      const ch = interaction.guild?.channels.cache.get(cfg.casinoChannelId) as TextChannel | undefined;
+      if (ch) {
+        const panelMsg = await ch.messages.fetch(cfg.casinoPanelMessageId).catch(() => null);
+        if (panelMsg) await panelMsg.delete();
+      }
+    }
+  } catch {
+    // ignore delete errors
+  }
+
+  await upsertCasinoConfig(guildId, { casinoChannelId: null, casinoPanelMessageId: null });
+  await interaction.reply({ content: `✅ ถอดแผงคาสิโนออกจาก <#${cfg.casinoChannelId}> แล้วครับ`, flags: 64 });
+  logger.info({ guildId, channelId: cfg.casinoChannelId }, "Casino panel removed");
 }
 
 // ─── Button: show modal ───────────────────────────────────────────────────────
 
 export async function handleCasinoButton(interaction: ButtonInteraction): Promise<void> {
+  if (interaction.guildId) {
+    const cfg = await getCasinoConfig(interaction.guildId);
+    if (cfg?.casinoChannelId && interaction.channelId !== cfg.casinoChannelId) {
+      await interaction.reply({ content: `❌ ใช้คาสิโนได้ในห้อง <#${cfg.casinoChannelId}> เท่านั้นนะครับ!`, flags: 64 });
+      return;
+    }
+  }
+
   const modal = new ModalBuilder()
     .setCustomId("casino_modal")
     .setTitle("🎰 Mushroom Casino — วางเดิมพัน");

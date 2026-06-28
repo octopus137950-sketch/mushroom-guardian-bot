@@ -29,6 +29,12 @@ export const guildConfigsTable = pgTable("guild_configs", {
   goodbyeImageUrl: text("goodbye_image_url"),
   goodbyeEnabled: integer("goodbye_enabled").notNull().default(0),
   logChannelId: text("log_channel_id"),
+  farmChannelId: text("farm_channel_id"),
+  casinoChannelId: text("casino_channel_id"),
+  casinoPanelMessageId: text("casino_panel_message_id"),
+  chatWelcomeEnabled: integer("chat_welcome_enabled").notNull().default(0),
+  chatWelcomeChannelId: text("chat_welcome_channel_id"),
+  chatWelcomeMessage: text("chat_welcome_message"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

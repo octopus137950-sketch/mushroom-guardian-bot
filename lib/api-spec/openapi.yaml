@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: bot
+    description: Discord bot status and stats
 paths:
   /healthz:
     get:
@@ -24,6 +26,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Bot status
+      description: Returns Discord bot online status and basic info
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+  /bot/stats:
+    get:
+      operationId: getBotStats
+      tags: [bot]
+      summary: Bot statistics
+      description: Returns game and player statistics
+      responses:
+        "200":
+          description: Bot stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStats"
+  /bot/leaderboard:
+    get:
+      operationId: getBotLeaderboard
+      tags: [bot]
+      summary: Top players leaderboard
+      description: Returns top 10 players by spores
+      responses:
+        "200":
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +76,66 @@ components:
           type: string
       required:
         - status
-
+    BotStatus:
+      type: object
+      properties:
+        online:
+          type: boolean
+        username:
+          type: ["string", "null"]
+        clientId:
+          type: ["string", "null"]
+        guildCount:
+          type: integer
+        commandCount:
+          type: integer
+        uptime:
+          type: ["integer", "null"]
+        inviteUrl:
+          type: ["string", "null"]
+      required:
+        - online
+        - username
+        - clientId
+        - guildCount
+        - commandCount
+        - uptime
+        - inviteUrl
+    BotStats:
+      type: object
+      properties:
+        totalPlayers:
+          type: integer
+        totalSpores:
+          type: integer
+        avgLevel:
+          type: number
+        totalTransactions:
+          type: integer
+      required:
+        - totalPlayers
+        - totalSpores
+        - avgLevel
+        - totalTransactions
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        userId:
+          type: string
+        username:
+          type: ["string", "null"]
+        spores:
+          type: integer
+        level:
+          type: integer
+        mushroomType:
+          type: ["string", "null"]
+      required:
+        - rank
+        - userId
+        - username
+        - spores
+        - level
+        - mushroomType

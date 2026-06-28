@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import { registerEvents } from "./events";
 import { logger } from "../lib/logger";
+import { setBotClient } from "./state";
 
 export function startBot(): void {
   const token = process.env["DISCORD_TOKEN"];
@@ -24,6 +25,10 @@ export function startBot(): void {
       Partials.Channel,
       Partials.Reaction,
     ],
+  });
+
+  client.once("ready", () => {
+    setBotClient(client);
   });
 
   registerEvents(client);

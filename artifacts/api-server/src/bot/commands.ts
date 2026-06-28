@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { executeReactionRole } from "./reaction-roles";
-import { executeWelcome, executeGoodbye } from "./welcome-goodbye";
+import { executeWelcome, executeGoodbye, executeChatWelcome } from "./welcome-goodbye";
 import {
   executeFarm,
   executeWallet,
@@ -20,8 +20,11 @@ import {
   executeGiveSpore,
   executeSetSpore,
   executeFarmConfig,
+  executeChannelConfig,
 } from "./minigame";
-import { executeCasinoSetup } from "./casino";
+import { executeCasinoSetup, executeCasinoRemove } from "./casino";
+import { executeTradeCrypto, executeTradeForex } from "./trading";
+import { executeAutodelete } from "./autodelete";
 
 export interface Command {
   data: SlashCommandBuilder;
@@ -458,7 +461,8 @@ const welcomeCommand = new SlashCommandBuilder()
         opt.setName("image").setDescription("URL รูปภาพแบนเนอร์ (ถ้ามี)").setRequired(false)
       )
   )
-  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบต้อนรับ"))
+  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบต้อนรับชั่วคราว"))
+  .addSubcommand((sub) => sub.setName("remove").setDescription("ลบการตั้งค่าระบบต้อนรับทั้งหมด"))
   .addSubcommand((sub) => sub.setName("test").setDescription("ทดสอบข้อความต้อนรับในห้องนี้"))
   .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) as SlashCommandBuilder;
@@ -480,7 +484,8 @@ const goodbyeCommand = new SlashCommandBuilder()
         opt.setName("image").setDescription("URL รูปภาพแบนเนอร์ (ถ้ามี)").setRequired(false)
       )
   )
-  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบลาก่อน"))
+  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบลาก่อนชั่วคราว"))
+  .addSubcommand((sub) => sub.setName("remove").setDescription("ลบการตั้งค่าระบบลาก่อนทั้งหมด"))
   .addSubcommand((sub) => sub.setName("test").setDescription("ทดสอบข้อความลาก่อนในห้องนี้"))
   .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) as SlashCommandBuilder;
@@ -539,6 +544,96 @@ const casinoSetupCommand = new SlashCommandBuilder()
   .setName("casino-setup")
   .setDescription("🎰 ติดตั้งแผงคาสิโนในช่องนี้ (admin only)")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const casinoRemoveCommand = new SlashCommandBuilder()
+  .setName("casino-remove")
+  .setDescription("🗑️ ถอดแผงคาสิโนออกจากช่องนี้ (admin only)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const channelConfigCommand = new SlashCommandBuilder()
+  .setName("channel-config")
+  .setDescription("📍 [แอดมิน] ตั้งค่าช่องสำหรับแต่ละระบบ")
+  .addSubcommand((sub) => sub.setName("set-farm").setDescription("ตั้งช่องนี้เป็นช่องฟาร์มเห็ด"))
+  .addSubcommand((sub) => sub.setName("reset-farm").setDescription("ยกเลิกข้อจำกัดช่องฟาร์ม (ใช้ได้ทุกช่อง)"))
+  .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าช่องปัจจุบัน"))
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const chatWelcomeCommand = new SlashCommandBuilder()
+  .setName("chat-welcome")
+  .setDescription("💬 ตั้งค่าข้อความต้อนรับในแชท (ข้อความธรรมดา ไม่ใช่ embed)")
+  .addSubcommand((sub) =>
+    sub.setName("setup").setDescription("ตั้งค่าข้อความต้อนรับในช่องนี้")
+      .addStringOption((opt) => opt.setName("message").setDescription("ข้อความ (ใช้ {user} {username} {server} {count})").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("disable").setDescription("ปิดระบบต้อนรับในแชท"))
+  .addSubcommand((sub) => sub.setName("remove").setDescription("ลบการตั้งค่าทั้งหมดออกจากฐานข้อมูล"))
+  .addSubcommand((sub) => sub.setName("test").setDescription("ทดสอบข้อความต้อนรับ"))
+  .addSubcommand((sub) => sub.setName("info").setDescription("ดูการตั้งค่าปัจจุบัน"))
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
+
+const tradeCommand = new SlashCommandBuilder()
+  .setName("trade")
+  .setDescription("💹 ดูราคาตลาดเรียลไทม์")
+  .addSubcommand((sub) =>
+    sub
+      .setName("crypto")
+      .setDescription("🪙 ดูราคาคริปโตเคอร์เรนซี")
+      .addStringOption((opt) =>
+        opt
+          .setName("coin")
+          .setDescription("ชื่อเหรียญ เช่น bitcoin, eth, btc, sol, doge")
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("forex")
+      .setDescription("💱 ดูอัตราแลกเปลี่ยนสกุลเงิน")
+      .addStringOption((opt) =>
+        opt
+          .setName("from")
+          .setDescription("สกุลเงินต้นทาง เช่น USD, THB, EUR")
+          .setRequired(true)
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName("to")
+          .setDescription("สกุลเงินปลายทาง เช่น THB, JPY, GBP")
+          .setRequired(true)
+      )
+  ) as SlashCommandBuilder;
+
+const autodeleteCommand = new SlashCommandBuilder()
+  .setName("autodelete")
+  .setDescription("🗑️ ตั้งค่าลบข้อความอัตโนมัติในช่องแชท")
+  .addSubcommand((sub) =>
+    sub
+      .setName("set")
+      .setDescription("เปิดลบอัตโนมัติในช่องนี้")
+      .addIntegerOption((opt) =>
+        opt
+          .setName("seconds")
+          .setDescription("ลบหลังจากกี่วินาที (5–3600)")
+          .setRequired(true)
+          .setMinValue(5)
+          .setMaxValue(3600)
+      )
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("ช่องที่ต้องการตั้งค่า (ถ้าไม่เลือกจะใช้ช่องปัจจุบัน)").setRequired(false)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("off")
+      .setDescription("ปิดลบอัตโนมัติในช่องนี้")
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("ช่องที่ต้องการปิด (ถ้าไม่เลือกจะใช้ช่องปัจจุบัน)").setRequired(false)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub.setName("list").setDescription("ดูรายการช่องที่เปิดลบอัตโนมัติทั้งหมด")
+  )
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages) as SlashCommandBuilder;
 
 const dailyCommand = new SlashCommandBuilder()
   .setName("daily")
@@ -638,6 +733,15 @@ const shopItemCommand = new SlashCommandBuilder()
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) as SlashCommandBuilder;
 
+async function executeTrade(interaction: ChatInputCommandInteraction) {
+  const sub = interaction.options.getSubcommand();
+  if (sub === "crypto") {
+    await executeTradeCrypto(interaction);
+  } else {
+    await executeTradeForex(interaction);
+  }
+}
+
 export const commands: Command[] = [
   { data: mushroomCommand, execute: executeMushroom },
   { data: warnCommand, execute: executeWarn },
@@ -659,8 +763,15 @@ export const commands: Command[] = [
   { data: giveSporeCommand, execute: executeGiveSpore },
   { data: setSporeCommand, execute: executeSetSpore },
   { data: casinoSetupCommand, execute: executeCasinoSetup },
+  { data: casinoRemoveCommand, execute: executeCasinoRemove },
+  { data: channelConfigCommand, execute: executeChannelConfig },
+  { data: chatWelcomeCommand, execute: executeChatWelcome },
   { data: dailyCommand, execute: executeDaily },
   { data: leaderboardCommand, execute: executeLeaderboard },
   { data: farmConfigCommand, execute: executeFarmConfig },
   { data: shopItemCommand, execute: executeShopItem },
+  // Trading
+  { data: tradeCommand, execute: executeTrade },
+  // Auto-delete
+  { data: autodeleteCommand, execute: executeAutodelete },
 ];
