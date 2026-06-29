@@ -6,24 +6,20 @@
 # ── Stage 1: Build ──────────────────────────────────────────
 FROM node:24-slim AS builder
 
-# ติดตั้ง pnpm
 RUN npm install -g pnpm@10
 
 WORKDIR /app
 
-# คัดลอก workspace config ก่อนเพื่อใช้ cache layer ได้ดีขึ้น
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
 COPY tsconfig.base.json tsconfig.json ./
-
-# คัดลอก lib และ artifacts source
 COPY lib/ ./lib/
 COPY artifacts/api-server/ ./artifacts/api-server/
 COPY scripts/ ./scripts/
 
-# ติดตั้ง dependencies ทั้งหมด (รวม devDependencies สำหรับ build)
+# ติดตั้ง dependencies ทั้งหมด (รวม devDeps สำหรับ build + drizzle-kit)
 RUN pnpm install --frozen-lockfile
 
-# Build shared libs ก่อน (typecheck + emit declarations)
+# Build shared libs
 RUN pnpm run typecheck:libs
 
 # Build api-server (esbuild bundle)
@@ -36,26 +32,27 @@ RUN npm install -g pnpm@10
 
 WORKDIR /app
 
-# คัดลอก workspace config (สำหรับ runtime dependencies)
+# คัดลอก workspace config และ source สำหรับ drizzle-kit
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
+COPY tsconfig.base.json tsconfig.json ./
 COPY lib/ ./lib/
 COPY artifacts/api-server/package.json ./artifacts/api-server/
 
-# ติดตั้งเฉพาะ production dependencies
-RUN pnpm install --frozen-lockfile --prod
+# คัดลอก node_modules ทั้งหมดจาก builder (รวม drizzle-kit สำหรับ db push)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/lib/db/node_modules ./lib/db/node_modules
+COPY --from=builder /app/artifacts/api-server/node_modules ./artifacts/api-server/node_modules
 
 # คัดลอก dist จาก builder stage
 COPY --from=builder /app/artifacts/api-server/dist ./artifacts/api-server/dist
 
-# กำหนด environment
 ENV NODE_ENV=production
 ENV PORT=8080
 
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:'+process.env.PORT+'/api/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-# รันบอท + API server
-CMD ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
+# auto-migrate DB แล้วค่อยรัน server
+CMD ["sh", "-c", "pnpm --filter @workspace/db run push && node --enable-source-maps artifacts/api-server/dist/index.mjs"]
