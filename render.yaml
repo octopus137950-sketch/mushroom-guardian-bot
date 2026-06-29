@@ -1,0 +1,36 @@
+# ============================================================
+#  Mushroom Guardian Bot — Render.com Deployment Config
+#  อัปโหลด repo นี้ขึ้น GitHub แล้ว connect ใน Render Dashboard
+# ============================================================
+
+services:
+  # ─── Discord Bot + API Server ───────────────────────────────
+  - type: web
+    name: mushroom-guardian-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore  # เปลี่ยนได้: oregon, ohio, frankfurt, singapore
+    plan: starter      # $7/mo — always-on (ไม่ sleep)
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false     # ต้องใส่ใน Render Dashboard > Environment
+      - key: SESSION_SECRET
+        sync: false     # ต้องใส่ใน Render Dashboard > Environment
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mushroom-guardian-db
+          property: connectionString
+    
+    healthCheckPath: /api/healthz
+
+  # ─── PostgreSQL Database ────────────────────────────────────
+  # (ใช้ DATABASE_URL จาก Replit ที่มีอยู่แล้วก็ได้ ลบ section นี้ออก)
+  # databases:
+  #   - name: mushroom-guardian-db
+  #     databaseName: mushroom_guardian
+  #     user: mushroom_user
+  #     region: singapore
+  #     plan: starter   # $7/mo

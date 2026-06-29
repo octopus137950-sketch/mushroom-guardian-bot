@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Replit
+.replit
+.replit-artifact
+.replitignore
+.cache
+.local
+.agents
+
+# Node
+node_modules
+**/node_modules
+
+# Build artifacts (จะ build ใหม่ใน Dockerfile)
+**/dist
+**/.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/Coverage
+coverage
+*.test.ts
+
+# Attached assets
+attached_assets
