@@ -140,11 +140,15 @@ export function registerEvents(client: Client): void {
       await cmd.execute(interaction as ChatInputCommandInteraction);
     } catch (err) {
       logger.error({ err, command: interaction.commandName }, "Command execution failed");
-      const reply = { content: "❌ เกิดข้อผิดพลาดขณะรันคำสั่ง กรุณาลองใหม่อีกครั้ง", ephemeral: true };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(reply);
-      } else {
-        await interaction.reply(reply);
+      const reply = { content: "❌ เกิดข้อผิดพลาดขณะรันคำสั่ง กรุณาลองใหม่อีกครั้ง", flags: 64 };
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(reply);
+        } else {
+          await interaction.reply(reply);
+        }
+      } catch (replyErr) {
+        logger.warn({ replyErr, command: interaction.commandName }, "Could not send error reply to user");
       }
     }
   });

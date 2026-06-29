@@ -11,6 +11,12 @@ jobs:
     name: TypeCheck & Build
     runs-on: ubuntu-latest
 
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      SESSION_SECRET: "ci-secret-placeholder-32-chars-min"
+      PORT: "8080"
+      NODE_ENV: "production"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,9 +57,6 @@ jobs:
         run: pnpm --filter @workspace/dashboard run typecheck
 
       - name: Build api-server
-        env:
-          PORT: "8080"
-          NODE_ENV: "production"
         run: pnpm --filter @workspace/api-server run build
 
       - name: Build dashboard
